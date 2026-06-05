@@ -106,7 +106,9 @@ function App() {
                 <div className="mt-6 pt-6 border-t border-slate-100">
                     <div className="text-[10px] text-slate-400 text-center mb-2">테스트 계정</div>
                     <div className="text-[10px] text-slate-500 space-y-0.5 font-mono bg-slate-50 rounded-md p-2">
-                        <div>메타엠: metam_juhi / pass1234</div>
+                        <div>마스터(본사): master / master1234</div>
+                        <div>메타엠: metam / metam1234</div>
+                        <div>로젠: logen / logen1234</div>
                     </div>
                 </div>
             </div>
