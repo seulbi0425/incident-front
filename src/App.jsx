@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
     ShieldCheck, User, Lock, Eye, EyeOff, AlertCircle, LogOut,
-    LayoutDashboard, FilePlus2, RefreshCw, Trash2, Search,
-    Package, AlertTriangle, CheckCircle2, Clock, X,
+    Home, FilePlus2, ClipboardList, Calculator, History, RefreshCw,
+    Trash2, Search, Package, AlertTriangle, CheckCircle2, Clock, X,
 } from 'lucide-react';
 
 const API = 'http://localhost:8080/api';
@@ -36,6 +36,16 @@ const ROLE_LABEL = {
     metam: '메타엠 접수자',
     logen: '로젠 검토자',
 };
+
+// 사이드바 메뉴 (key = 화면 식별자, icon = lucide 아이콘)
+const MENU = [
+    { key: 'home', label: '홈', icon: Home },
+    { key: 'create', label: '사고접수 등록', icon: FilePlus2 },
+    { key: 'list', label: '사고접수 조회', icon: ClipboardList },
+    { key: 'approval', label: '승인 대기', icon: Clock },
+    { key: 'settlement', label: '정산 검증', icon: Calculator },
+    { key: 'history', label: '시스템 변경 이력', icon: History },
+];
 
 function App() {
     const [currentUser, setCurrentUser] = useState(null); // 로그인한 사용자 기억
@@ -152,7 +162,7 @@ function LoginPage({ onLogin }) {
 
 // ============ 메인 화면 (로그인 후) ============
 function MainPage({ user, onLogout }) {
-    const [view, setView] = useState('dashboard'); // 'dashboard' | 'create'
+    const [view, setView] = useState('home'); // MENU의 key 중 하나
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -187,64 +197,214 @@ function MainPage({ user, onLogout }) {
         }
     };
 
-    // 등록 성공 시 목록 갱신 후 대시보드로
+    // 등록 성공 시 목록 갱신 후 조회 화면으로
     const handleCreated = (created) => {
         setIncidents(prev => [...prev, created]);
-        setView('dashboard');
+        setView('list');
     };
 
-    const navBtn = (key, icon, label) => (
-        <button
-            onClick={() => setView(key)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${
-                view === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-        >
-            {icon}
-            {label}
-        </button>
-    );
-
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* 상단 바 */}
-            <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10">
-                <div className="flex items-center gap-2">
+        <div className="min-h-screen bg-slate-50 flex">
+            {/* 좌측 세로 사이드바 */}
+            <aside className="fixed inset-y-0 left-0 z-20 w-60 bg-white border-r border-slate-200 flex flex-col">
+                {/* 로고 */}
+                <div className="flex items-center gap-2 px-5 h-16 border-b border-slate-200">
                     <ShieldCheck size={20} className="text-slate-900" />
-                    <span className="font-semibold text-slate-900">사고접수 통합 시스템</span>
+                    <span className="font-semibold text-slate-900 leading-tight">사고접수<br />통합 시스템</span>
                 </div>
-                <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-600">
-                        {user.name}님
-                        {user.role && <span className="ml-1.5 text-[11px] text-slate-400">({ROLE_LABEL[user.role] ?? user.role})</span>}
-                    </span>
-                    <button onClick={onLogout} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 border border-slate-200 rounded-md px-2.5 py-1.5">
-                        <LogOut size={12} />
+
+                {/* 메뉴 */}
+                <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                    {MENU.map(({ key, label, icon: Icon }) => (
+                        <button
+                            key={key}
+                            onClick={() => setView(key)}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition ${
+                                view === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                        >
+                            <Icon size={16} />
+                            {label}
+                        </button>
+                    ))}
+                </nav>
+
+                {/* 사용자 정보 + 로그아웃 */}
+                <div className="border-t border-slate-200 p-3">
+                    <div className="px-2 py-1.5 mb-1">
+                        <div className="text-sm font-medium text-slate-700">{user.name}님</div>
+                        {user.role && <div className="text-[11px] text-slate-400">{ROLE_LABEL[user.role] ?? user.role}</div>}
+                    </div>
+                    <button onClick={onLogout} className="w-full flex items-center gap-2 text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md px-3 py-2 transition">
+                        <LogOut size={14} />
                         로그아웃
                     </button>
                 </div>
+            </aside>
+
+            {/* 본문 영역 (사이드바 너비만큼 좌측 여백) */}
+            <div className="flex-1 ml-60 min-h-screen">
+                <div className="max-w-6xl mx-auto p-6">
+                    {view === 'list' && (
+                        <Dashboard
+                            incidents={incidents}
+                            loading={loading}
+                            error={error}
+                            onReload={loadIncidents}
+                            onDelete={deleteIncident}
+                            onGoCreate={() => setView('create')}
+                        />
+                    )}
+                    {view === 'create' && (
+                        <CreateIncident onCreated={handleCreated} onCancel={() => setView('list')} />
+                    )}
+                    {view === 'home' && (
+                        <HomeView incidents={incidents} user={user} />
+                    )}
+                    {view === 'approval' && (
+                        <Placeholder icon={Clock} title="승인 대기" desc="로젠 검토 대기 중인 사고건을 확인하고 승인·반려 처리하는 화면입니다." />
+                    )}
+                    {view === 'settlement' && (
+                        <Placeholder icon={Calculator} title="정산 검증" desc="승인된 사고건의 정산 금액을 검증하고 확정하는 화면입니다." />
+                    )}
+                    {view === 'history' && (
+                        <Placeholder icon={History} title="시스템 변경 이력" desc="사고건 상태 변경 및 시스템 활동 로그를 확인하는 화면입니다." />
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// 사고건에서 접수일자 추정 (createdAt 류 → 없으면 주문번호의 YYYYMMDD 패턴)
+function incidentDate(inc) {
+    const raw = inc.createdAt ?? inc.createdDate ?? inc.regDate ?? inc.registeredAt;
+    if (raw) {
+        const d = new Date(raw);
+        if (!isNaN(d.getTime())) return d;
+    }
+    const m = String(inc.orderNo ?? '').match(/(\d{4})(\d{2})(\d{2})/);
+    if (m) {
+        const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+}
+
+// 브랜드별 막대 색상
+const BRAND_BAR = {
+    MLB: 'bg-slate-900', DX: 'bg-slate-700', MK: 'bg-slate-500',
+    DV: 'bg-slate-400', ST: 'bg-amber-500', W: 'bg-blue-500',
+};
+
+// ============ 홈 ============
+function HomeView({ incidents, user }) {
+    const stats = [
+        { label: '전체', count: incidents.length, icon: <Package size={18} />, color: 'text-slate-900' },
+        { label: '접수대기', count: incidents.filter(i => i.status === 'pending').length, icon: <Clock size={18} />, color: 'text-amber-600' },
+        { label: '로젠승인', count: incidents.filter(i => i.status === 'approved').length, icon: <CheckCircle2 size={18} />, color: 'text-blue-600' },
+        { label: '정산완료', count: incidents.filter(i => i.status === 'settled').length, icon: <AlertTriangle size={18} />, color: 'text-emerald-600' },
+    ];
+
+    // 월별 접수 추이 (최근 6개월)
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: `${d.getMonth() + 1}월`, count: 0 });
+    }
+    incidents.forEach(inc => {
+        const d = incidentDate(inc);
+        if (!d) return;
+        const bucket = months.find(m => m.key === `${d.getFullYear()}-${d.getMonth()}`);
+        if (bucket) bucket.count++;
+    });
+    const maxMonth = Math.max(1, ...months.map(m => m.count));
+
+    // 브랜드별 분포
+    const brandData = BRANDS
+        .map(b => ({ brand: b, count: incidents.filter(i => i.brand === b).length }))
+        .sort((a, b) => b.count - a.count);
+    const maxBrand = Math.max(1, ...brandData.map(b => b.count));
+
+    return (
+        <div>
+            <div className="mb-6">
+                <h2 className="text-xl font-semibold text-slate-900">{user.name}님, 안녕하세요 👋</h2>
+                <p className="text-sm text-slate-500 mt-0.5">사고접수 통합 시스템 현황을 한눈에 확인하세요</p>
             </div>
 
-            {/* 네비게이션 */}
-            <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center gap-2">
-                {navBtn('dashboard', <LayoutDashboard size={15} />, '대시보드')}
-                {navBtn('create', <FilePlus2 size={15} />, '사고건 등록')}
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {stats.map(s => (
+                    <div key={s.label} className="bg-white border border-slate-200 rounded-xl p-4">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-slate-500">{s.label}</span>
+                            <span className={s.color}>{s.icon}</span>
+                        </div>
+                        <div className={`text-2xl font-semibold mt-2 ${s.color}`}>{s.count}</div>
+                    </div>
+                ))}
             </div>
 
-            {/* 본문 */}
-            <div className="max-w-6xl mx-auto p-6">
-                {view === 'dashboard' ? (
-                    <Dashboard
-                        incidents={incidents}
-                        loading={loading}
-                        error={error}
-                        onReload={loadIncidents}
-                        onDelete={deleteIncident}
-                        onGoCreate={() => setView('create')}
-                    />
-                ) : (
-                    <CreateIncident onCreated={handleCreated} onCancel={() => setView('dashboard')} />
-                )}
+            {/* 차트 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 월별 접수 추이 */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-slate-900">월별 접수 추이</h3>
+                    <p className="text-xs text-slate-400 mt-0.5 mb-4">최근 6개월</p>
+                    <div className="flex items-end justify-between gap-3 h-44">
+                        {months.map(m => (
+                            <div key={m.key} className="flex-1 flex flex-col items-center justify-end h-full">
+                                <span className="text-xs font-medium text-slate-600 mb-1">{m.count}</span>
+                                <div
+                                    className="w-full max-w-[36px] bg-slate-900 rounded-t-md transition-all"
+                                    style={{ height: `${(m.count / maxMonth) * 100}%`, minHeight: m.count > 0 ? '4px' : '0' }}
+                                />
+                                <span className="text-[11px] text-slate-400 mt-1.5">{m.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 브랜드별 분포 */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-slate-900">브랜드별 분포</h3>
+                    <p className="text-xs text-slate-400 mt-0.5 mb-4">전체 {incidents.length}건 기준</p>
+                    <div className="space-y-2.5">
+                        {brandData.map(({ brand, count }) => (
+                            <div key={brand} className="flex items-center gap-3">
+                                <span className="w-10 text-xs font-medium text-slate-600 shrink-0">{brand}</span>
+                                <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
+                                    <div
+                                        className={`${BRAND_BAR[brand] ?? 'bg-slate-500'} h-full rounded-full transition-all`}
+                                        style={{ width: `${(count / maxBrand) * 100}%` }}
+                                    />
+                                </div>
+                                <span className="w-8 text-right text-xs text-slate-500 shrink-0">{count}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ============ 준비 중 화면 (승인 대기 / 정산 검증 / 시스템 변경 이력) ============
+function Placeholder({ icon: Icon, title, desc }) {
+    return (
+        <div>
+            <div className="mb-5">
+                <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+                <p className="text-sm text-slate-500 mt-0.5">{desc}</p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-16 flex flex-col items-center justify-center text-center">
+                <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 mb-4">
+                    <Icon size={26} />
+                </span>
+                <p className="text-sm font-medium text-slate-600">준비 중인 기능입니다</p>
+                <p className="text-xs text-slate-400 mt-1">곧 제공될 예정입니다</p>
             </div>
         </div>
     );
@@ -280,7 +440,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
             {/* 헤더 */}
             <div className="flex items-center justify-between mb-5">
                 <div>
-                    <h2 className="text-xl font-semibold text-slate-900">사고접수 대시보드</h2>
+                    <h2 className="text-xl font-semibold text-slate-900">사고접수 조회</h2>
                     <p className="text-sm text-slate-500 mt-0.5">등록된 사고건을 한눈에 확인하세요</p>
                 </div>
                 <div className="flex items-center gap-2">
