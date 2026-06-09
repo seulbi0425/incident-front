@@ -504,10 +504,14 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                         <tr className="bg-slate-50 text-slate-500 text-xs">
                             <th className="text-left font-medium px-4 py-3 w-16">번호</th>
                             <th className="text-left font-medium px-4 py-3">브랜드</th>
-                            <th className="text-left font-medium px-4 py-3">사고유형</th>
-                            <th className="text-left font-medium px-4 py-3">주문번호</th>
-                            <th className="text-left font-medium px-4 py-3">송장번호</th>
+                            <th className="text-left font-medium px-4 py-3">시즌</th>
+                            <th className="text-left font-medium px-4 py-3">스타일코드</th>
+                            <th className="text-left font-medium px-4 py-3">컬러</th>
+                            <th className="text-left font-medium px-4 py-3">사이즈</th>
                             <th className="text-right font-medium px-4 py-3 w-16">수량</th>
+                            <th className="text-right font-medium px-4 py-3 w-24">금액</th>
+                            <th className="text-left font-medium px-4 py-3">송장번호</th>
+                            <th className="text-left font-medium px-4 py-3">사고유형</th>
                             <th className="text-left font-medium px-4 py-3 w-24">상태</th>
                             <th className="text-right font-medium px-4 py-3 w-16"></th>
                         </tr>
@@ -515,7 +519,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                     <tbody>
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="text-center text-slate-400 py-12 text-sm">
+                                <td colSpan={12} className="text-center text-slate-400 py-12 text-sm">
                                     {loading ? '불러오는 중...' : '표시할 사고건이 없습니다.'}
                                 </td>
                             </tr>
@@ -524,10 +528,14 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                                 <tr key={inc.id} className="border-t border-slate-100 hover:bg-slate-50">
                                     <td className="px-4 py-3 text-slate-400">#{inc.id}</td>
                                     <td className="px-4 py-3 font-medium text-slate-800">{inc.brand}</td>
-                                    <td className="px-4 py-3 text-slate-700">{inc.incidentType}</td>
-                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.orderNo}</td>
-                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.trackingNo}</td>
+                                    <td className="px-4 py-3 text-slate-700">{inc.season}</td>
+                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.styleCode}</td>
+                                    <td className="px-4 py-3 text-slate-700">{inc.color}</td>
+                                    <td className="px-4 py-3 text-slate-700">{inc.size}</td>
                                     <td className="px-4 py-3 text-right text-slate-700">{inc.quantity ?? 1}</td>
+                                    <td className="px-4 py-3 text-right text-slate-700">{(inc.amount ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.trackingNo}</td>
+                                    <td className="px-4 py-3 text-slate-700">{inc.incidentType}</td>
                                     <td className="px-4 py-3">
                                         <span className={`inline-block text-xs px-2 py-0.5 rounded-full border ${STATUS_STYLE[inc.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                             {statusLabel(inc.status)}
