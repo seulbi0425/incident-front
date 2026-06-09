@@ -507,6 +507,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                             <th className="text-left font-medium px-4 py-3">사고유형</th>
                             <th className="text-left font-medium px-4 py-3">주문번호</th>
                             <th className="text-left font-medium px-4 py-3">송장번호</th>
+                            <th className="text-right font-medium px-4 py-3 w-16">수량</th>
                             <th className="text-left font-medium px-4 py-3 w-24">상태</th>
                             <th className="text-right font-medium px-4 py-3 w-16"></th>
                         </tr>
@@ -514,7 +515,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                     <tbody>
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={7} className="text-center text-slate-400 py-12 text-sm">
+                                <td colSpan={8} className="text-center text-slate-400 py-12 text-sm">
                                     {loading ? '불러오는 중...' : '표시할 사고건이 없습니다.'}
                                 </td>
                             </tr>
@@ -526,6 +527,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                                     <td className="px-4 py-3 text-slate-700">{inc.incidentType}</td>
                                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.orderNo}</td>
                                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.trackingNo}</td>
+                                    <td className="px-4 py-3 text-right text-slate-700">{inc.quantity ?? 1}</td>
                                     <td className="px-4 py-3">
                                         <span className={`inline-block text-xs px-2 py-0.5 rounded-full border ${STATUS_STYLE[inc.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                             {statusLabel(inc.status)}
@@ -562,6 +564,8 @@ function CreateIncident({ onCreated, onCancel }) {
         styleCode: '',
         color: '',
         size: '',
+        quantity: 1,
+        amount: 0,
         memo: '',
     });
     const [submitting, setSubmitting] = useState(false);
@@ -573,6 +577,10 @@ function CreateIncident({ onCreated, onCancel }) {
         setError('');
         if (!form.orderNo.trim()) {
             setError('주문번호를 입력해주세요');
+            return;
+        }
+        if (!form.incidentDate) {
+            setError('사고발생일을 입력해주세요');
             return;
         }
         setSubmitting(true);
@@ -622,7 +630,7 @@ function CreateIncident({ onCreated, onCancel }) {
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>사고발생일</label>
+                        <label className={labelCls}>사고발생일 <span className="text-rose-500">*</span></label>
                         <input
                             type="date"
                             value={form.incidentDate}
@@ -687,6 +695,27 @@ function CreateIncident({ onCreated, onCancel }) {
                             value={form.size}
                             onChange={e => update('size', e.target.value)}
                             placeholder="예: 095 / M"
+                            className={field}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>수량</label>
+                        <input
+                            type="number"
+                            min={1}
+                            value={form.quantity}
+                            onChange={e => update('quantity', Math.max(1, Number(e.target.value) || 1))}
+                            className={field}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>금액</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={form.amount}
+                            onChange={e => update('amount', Math.max(0, Number(e.target.value) || 0))}
+                            placeholder="0"
                             className={field}
                         />
                     </div>
