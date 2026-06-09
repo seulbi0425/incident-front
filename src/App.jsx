@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     ShieldCheck, User, Lock, Eye, EyeOff, AlertCircle, LogOut,
     Home, FilePlus2, ClipboardList, Calculator, History, RefreshCw,
-    Trash2, Search, Package, AlertTriangle, CheckCircle2, Clock, X,
+    Trash2, Search, Package, AlertTriangle, CheckCircle2, Clock, X, Download,
 } from 'lucide-react';
 
 const API = 'http://localhost:8080/api';
@@ -436,6 +436,31 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
         return true;
     });
 
+    // 현재 화면에 보이는(필터 적용된) 목록을 엑셀(.xlsx)로 다운로드
+    // xlsx 라이브러리는 용량이 커서 버튼 클릭 시에만 동적으로 불러온다
+    const handleExport = async () => {
+        const XLSX = await import('xlsx');
+        const rows = filtered.map(inc => ({
+            '번호': inc.id,
+            '브랜드': inc.brand,
+            '시즌': inc.season,
+            '스타일코드': inc.styleCode,
+            '컬러': inc.color,
+            '사이즈': inc.size,
+            '수량': inc.quantity ?? 1,
+            '금액': inc.amount ?? 0,
+            '송장번호': inc.trackingNo,
+            '사고유형': inc.incidentType,
+            '상태': statusLabel(inc.status),
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '사고접수');
+        const d = new Date();
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+        XLSX.writeFile(wb, `사고접수_${stamp}.xlsx`);
+    };
+
     return (
         <div>
             {/* 헤더 */}
@@ -448,6 +473,15 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                     <button onClick={onReload} className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-md px-3 py-2 hover:bg-slate-50">
                         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                         새로고침
+                    </button>
+                    <button
+                        onClick={handleExport}
+                        disabled={filtered.length === 0}
+                        className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-md px-3 py-2 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="현재 목록을 엑셀로 다운로드"
+                    >
+                        <Download size={14} />
+                        엑셀 다운로드
                     </button>
                     <button onClick={onGoCreate} className="flex items-center gap-1.5 text-sm bg-slate-900 text-white rounded-md px-3 py-2 hover:bg-slate-800">
                         <FilePlus2 size={14} />
