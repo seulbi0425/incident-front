@@ -263,7 +263,7 @@ function MainPage({ user, onLogout }) {
                         />
                     )}
                     {view === 'create' && (
-                        <CreateIncident onCreated={handleCreated} onCancel={() => setView('list')} />
+                        <CreateIncident user={user} onCreated={handleCreated} onCancel={() => setView('list')} />
                     )}
                     {view === 'home' && (
                         <HomeView incidents={incidents} user={user} />
@@ -411,6 +411,15 @@ function fmtDateTime(v) {
     if (isNaN(d.getTime())) return v;
     const p = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 날짜만 포맷 (YYYY-MM-DD), 값 없으면 '-'
+function fmtDate(v) {
+    if (!v) return '-';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return v;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 // ============ 승인 대기 ============
@@ -603,6 +612,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
         const XLSX = await import('xlsx');
         const rows = filtered.map(inc => ({
             '번호': inc.id,
+            '접수일시': fmtDate(inc.createdAt ?? inc.registeredAt),
             '브랜드': inc.brand,
             '시즌': inc.season,
             '스타일코드': inc.styleCode,
@@ -698,6 +708,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                     <thead>
                         <tr className="bg-slate-50 text-slate-500 text-xs">
                             <th className="text-left font-medium px-4 py-3 w-16">번호</th>
+                            <th className="text-left font-medium px-4 py-3 w-28">접수일시</th>
                             <th className="text-left font-medium px-4 py-3">브랜드</th>
                             <th className="text-left font-medium px-4 py-3">시즌</th>
                             <th className="text-left font-medium px-4 py-3">스타일코드</th>
@@ -714,7 +725,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                     <tbody>
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={12} className="text-center text-slate-400 py-12 text-sm">
+                                <td colSpan={13} className="text-center text-slate-400 py-12 text-sm">
                                     {loading ? '불러오는 중...' : '표시할 사고건이 없습니다.'}
                                 </td>
                             </tr>
@@ -722,6 +733,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                             filtered.map(inc => (
                                 <tr key={inc.id} className="border-t border-slate-100 hover:bg-slate-50">
                                     <td className="px-4 py-3 text-slate-400">#{inc.id}</td>
+                                    <td className="px-4 py-3 text-slate-600 text-xs">{fmtDate(inc.createdAt ?? inc.registeredAt)}</td>
                                     <td className="px-4 py-3 font-medium text-slate-800">{inc.brand}</td>
                                     <td className="px-4 py-3 text-slate-700">{inc.season}</td>
                                     <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.styleCode}</td>
@@ -754,7 +766,7 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
 }
 
 // ============ 사고건 등록 ============
-function CreateIncident({ onCreated, onCancel }) {
+function CreateIncident({ user, onCreated, onCancel }) {
     const [form, setForm] = useState({
         brand: BRANDS[0],
         incidentType: INCIDENT_TYPES[0],
@@ -791,7 +803,7 @@ function CreateIncident({ onCreated, onCancel }) {
             const response = await fetch(`${API}/incidents`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(form),
+                body: JSON.stringify({ ...form, createdBy: user.loginId }),
             });
             if (!response.ok) throw new Error('서버 오류 (' + response.status + ')');
             const created = await response.json();
