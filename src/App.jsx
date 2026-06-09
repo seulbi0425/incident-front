@@ -10,6 +10,7 @@ const API = 'http://localhost:8080/api';
 // 선택 옵션들 (백엔드 Incident: brand / orderNo / trackingNo / incidentType / status)
 const BRANDS = ['MLB', 'DX', 'MK', 'DV', 'ST', 'W'];
 const INCIDENT_TYPES = ['송장흐름없음', '분실', '파손', '오배송', '지연', '기타'];
+const CARRIERS = ['로젠', 'CJ'];
 
 // 상태: 코드(value, DB 저장값) + 화면 표시명(label)
 const STATUSES = [
@@ -555,6 +556,13 @@ function CreateIncident({ onCreated, onCancel }) {
         orderNo: '',
         trackingNo: '',
         status: STATUSES[0].value,
+        incidentDate: '',
+        carrier: CARRIERS[0],
+        season: '',
+        styleCode: '',
+        color: '',
+        size: '',
+        memo: '',
     });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -613,25 +621,85 @@ function CreateIncident({ onCreated, onCancel }) {
                             {INCIDENT_TYPES.map(t => <option key={t}>{t}</option>)}
                         </select>
                     </div>
+                    <div>
+                        <label className={labelCls}>사고발생일</label>
+                        <input
+                            type="date"
+                            value={form.incidentDate}
+                            onChange={e => update('incidentDate', e.target.value)}
+                            className={field}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>택배사</label>
+                        <select value={form.carrier} onChange={e => update('carrier', e.target.value)} className={field}>
+                            {CARRIERS.map(c => <option key={c}>{c}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>주문번호 <span className="text-rose-500">*</span></label>
+                        <input
+                            value={form.orderNo}
+                            onChange={e => update('orderNo', e.target.value)}
+                            placeholder="예: ORD-20260605-001"
+                            className={`${field} font-mono`}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>송장번호</label>
+                        <input
+                            value={form.trackingNo}
+                            onChange={e => update('trackingNo', e.target.value)}
+                            placeholder="예: 1234567890"
+                            className={`${field} font-mono`}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>시즌</label>
+                        <input
+                            value={form.season}
+                            onChange={e => update('season', e.target.value)}
+                            placeholder="예: 26SS"
+                            className={field}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>스타일코드</label>
+                        <input
+                            value={form.styleCode}
+                            onChange={e => update('styleCode', e.target.value)}
+                            placeholder="예: 3ATSM0234"
+                            className={`${field} font-mono`}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>컬러</label>
+                        <input
+                            value={form.color}
+                            onChange={e => update('color', e.target.value)}
+                            placeholder="예: 블랙"
+                            className={field}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>사이즈</label>
+                        <input
+                            value={form.size}
+                            onChange={e => update('size', e.target.value)}
+                            placeholder="예: 095 / M"
+                            className={field}
+                        />
+                    </div>
                 </div>
 
                 <div>
-                    <label className={labelCls}>주문번호 <span className="text-rose-500">*</span></label>
-                    <input
-                        value={form.orderNo}
-                        onChange={e => update('orderNo', e.target.value)}
-                        placeholder="예: ORD-20260605-001"
-                        className={`${field} font-mono`}
-                    />
-                </div>
-
-                <div>
-                    <label className={labelCls}>송장번호</label>
-                    <input
-                        value={form.trackingNo}
-                        onChange={e => update('trackingNo', e.target.value)}
-                        placeholder="예: 1234567890"
-                        className={`${field} font-mono`}
+                    <label className={labelCls}>메모</label>
+                    <textarea
+                        value={form.memo}
+                        onChange={e => update('memo', e.target.value)}
+                        rows={4}
+                        placeholder="사고 상황·특이사항을 자유롭게 입력하세요"
+                        className={`${field} resize-y`}
                     />
                 </div>
 
