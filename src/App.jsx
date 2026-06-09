@@ -3,6 +3,7 @@ import {
     ShieldCheck, User, Lock, Eye, EyeOff, AlertCircle, LogOut,
     Home, FilePlus2, ClipboardList, Calculator, History, RefreshCw,
     Trash2, Search, Package, AlertTriangle, CheckCircle2, Clock, X, Download,
+    Check, Ban,
 } from 'lucide-react';
 
 const API = 'http://localhost:8080/api';
@@ -204,6 +205,11 @@ function MainPage({ user, onLogout }) {
         setView('list');
     };
 
+    // 승인/반려 등으로 단건이 갱신되면 목록에 반영
+    const updateIncident = (updated) => {
+        setIncidents(prev => prev.map(inc => (inc.id === updated.id ? updated : inc)));
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 flex">
             {/* 좌측 세로 사이드바 */}
@@ -263,7 +269,13 @@ function MainPage({ user, onLogout }) {
                         <HomeView incidents={incidents} user={user} />
                     )}
                     {view === 'approval' && (
-                        <Placeholder icon={Clock} title="승인 대기" desc="로젠 검토 대기 중인 사고건을 확인하고 승인·반려 처리하는 화면입니다." />
+                        <ApprovalQueue
+                            incidents={incidents}
+                            user={user}
+                            loading={loading}
+                            onUpdated={updateIncident}
+                            onReload={loadIncidents}
+                        />
                     )}
                     {view === 'settlement' && (
                         <Placeholder icon={Calculator} title="정산 검증" desc="승인된 사고건의 정산 금액을 검증하고 확정하는 화면입니다." />
@@ -392,7 +404,156 @@ function HomeView({ incidents, user }) {
     );
 }
 
-// ============ 준비 중 화면 (승인 대기 / 정산 검증 / 시스템 변경 이력) ============
+// 날짜시간 포맷 (YYYY-MM-DD HH:mm), 값 없으면 '-'
+function fmtDateTime(v) {
+    if (!v) return '-';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return v;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ============ 승인 대기 ============
+function ApprovalQueue({ incidents, user, loading, onUpdated, onReload }) {
+    const [busyId, setBusyId] = useState(null); // 처리 중인 사고건 id
+    const [error, setError] = useState('');
+
+    const pending = incidents.filter(i => i.status === 'pending');
+
+    // 승인: PUT /approve (현재 로그인 사용자를 승인자로)
+    const approve = async (inc) => {
+        setError('');
+        setBusyId(inc.id);
+        try {
+            const res = await fetch(`${API}/incidents/${inc.id}/approve`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approvedBy: user.loginId }),
+            });
+            if (!res.ok) throw new Error('서버 오류 (' + res.status + ')');
+            onUpdated(await res.json());
+        } catch (e) {
+            setError('승인 실패: ' + e.message);
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    // 반려: 사유 입력 후 PUT /reject
+    const reject = async (inc) => {
+        const reason = window.prompt(`#${inc.id} 반려 사유를 입력하세요`);
+        if (reason === null) return; // 취소
+        if (!reason.trim()) {
+            setError('반려 사유를 입력해주세요');
+            return;
+        }
+        setError('');
+        setBusyId(inc.id);
+        try {
+            const res = await fetch(`${API}/incidents/${inc.id}/reject`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rejectedBy: user.loginId, rejectReason: reason.trim() }),
+            });
+            if (!res.ok) throw new Error('서버 오류 (' + res.status + ')');
+            onUpdated(await res.json());
+        } catch (e) {
+            setError('반려 실패: ' + e.message);
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    return (
+        <div>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between mb-5">
+                <div>
+                    <h2 className="text-xl font-semibold text-slate-900">승인 대기</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">접수대기 상태의 사고건을 검토하고 승인·반려 처리하세요</p>
+                </div>
+                <button onClick={onReload} className="flex items-center gap-1.5 text-sm text-slate-600 border border-slate-200 rounded-md px-3 py-2 hover:bg-slate-50">
+                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    새로고침
+                </button>
+            </div>
+
+            {/* 대기 건수 */}
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 mb-4">
+                <Clock size={16} />
+                <span className="text-sm font-medium">{pending.length}건이 승인을 기다리고 있습니다</span>
+            </div>
+
+            {error && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3 rounded-md mb-4 flex items-center gap-2">
+                    <AlertCircle size={16} />
+                    {error}
+                </div>
+            )}
+
+            {/* 목록 */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-xs">
+                            <th className="text-left font-medium px-4 py-3 w-16">번호</th>
+                            <th className="text-left font-medium px-4 py-3">접수일시</th>
+                            <th className="text-left font-medium px-4 py-3">브랜드</th>
+                            <th className="text-left font-medium px-4 py-3">주문번호</th>
+                            <th className="text-left font-medium px-4 py-3">송장번호</th>
+                            <th className="text-left font-medium px-4 py-3">사고유형</th>
+                            <th className="text-left font-medium px-4 py-3">등록자</th>
+                            <th className="text-right font-medium px-4 py-3 w-44">처리</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {pending.length === 0 ? (
+                            <tr>
+                                <td colSpan={8} className="text-center text-slate-400 py-12 text-sm">
+                                    {loading ? '불러오는 중...' : '승인 대기 중인 사고건이 없습니다.'}
+                                </td>
+                            </tr>
+                        ) : (
+                            pending.map(inc => (
+                                <tr key={inc.id} className="border-t border-slate-100 hover:bg-slate-50">
+                                    <td className="px-4 py-3 text-slate-400">#{inc.id}</td>
+                                    <td className="px-4 py-3 text-slate-600 text-xs">{fmtDateTime(inc.createdAt ?? inc.registeredAt)}</td>
+                                    <td className="px-4 py-3 font-medium text-slate-800">{inc.brand}</td>
+                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.orderNo}</td>
+                                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{inc.trackingNo}</td>
+                                    <td className="px-4 py-3 text-slate-700">{inc.incidentType}</td>
+                                    <td className="px-4 py-3 text-slate-600">{inc.createdBy ?? inc.registeredBy ?? inc.reporter ?? '-'}</td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => approve(inc)}
+                                                disabled={busyId === inc.id}
+                                                className="flex items-center gap-1 text-xs font-medium bg-emerald-600 text-white rounded-md px-3 py-1.5 hover:bg-emerald-700 disabled:opacity-50"
+                                            >
+                                                <Check size={14} />
+                                                승인
+                                            </button>
+                                            <button
+                                                onClick={() => reject(inc)}
+                                                disabled={busyId === inc.id}
+                                                className="flex items-center gap-1 text-xs font-medium text-rose-600 border border-rose-200 rounded-md px-3 py-1.5 hover:bg-rose-50 disabled:opacity-50"
+                                            >
+                                                <Ban size={14} />
+                                                반려
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+// ============ 준비 중 화면 (정산 검증 / 시스템 변경 이력) ============
 function Placeholder({ icon: Icon, title, desc }) {
     return (
         <div>
