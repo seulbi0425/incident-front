@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     ShieldCheck, User, Lock, Eye, EyeOff, AlertCircle, LogOut,
     Home, FilePlus2, ClipboardList, Calculator, History, RefreshCw,
-    Trash2, Search, Package, AlertTriangle, CheckCircle2, Clock, X, Download,
+    Search, Package, AlertTriangle, CheckCircle2, Clock, X, Download,
     Check, Ban,
 } from 'lucide-react';
 
@@ -14,11 +14,12 @@ const INCIDENT_TYPES = ['송장흐름없음', '분실', '파손', '오배송', '
 const CARRIERS = ['로젠', 'CJ'];
 
 // 상태: 코드(value, DB 저장값) + 화면 표시명(label)
+const SETTLED = 'settled';
 const STATUSES = [
     { value: 'pending', label: '접수대기' },
     { value: 'approved', label: '로젠승인' },
     { value: 'rejected', label: '반려' },
-    { value: 'settled', label: '정산완료' },
+    { value: SETTLED, label: '정산완료' },
     { value: 'withdrawn', label: '철회' },
 ];
 const statusLabel = (v) => STATUSES.find(s => s.value === v)?.label ?? v ?? '미지정';
@@ -28,7 +29,7 @@ const STATUS_STYLE = {
     pending: 'bg-amber-50 text-amber-700 border-amber-200',
     approved: 'bg-blue-50 text-blue-700 border-blue-200',
     rejected: 'bg-rose-50 text-rose-700 border-rose-200',
-    settled: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    [SETTLED]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     withdrawn: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
@@ -189,16 +190,6 @@ function MainPage({ user, onLogout }) {
         loadIncidents();
     }, []);
 
-    const deleteIncident = async (id) => {
-        if (!confirm(`#${id} 사고건을 삭제할까요?`)) return;
-        try {
-            await fetch(`${API}/incidents/${id}`, { method: 'DELETE' });
-            setIncidents(prev => prev.filter(inc => inc.id !== id));
-        } catch (e) {
-            alert('삭제 실패: ' + e.message);
-        }
-    };
-
     // 등록 성공 시 목록 갱신 후 조회 화면으로
     const handleCreated = (created) => {
         setIncidents(prev => [...prev, created]);
@@ -255,10 +246,11 @@ function MainPage({ user, onLogout }) {
                     {view === 'list' && (
                         <Dashboard
                             incidents={incidents}
+                            user={user}
                             loading={loading}
                             error={error}
                             onReload={loadIncidents}
-                            onDelete={deleteIncident}
+                            onUpdated={updateIncident}
                             onGoCreate={() => setView('create')}
                         />
                     )}
@@ -316,7 +308,7 @@ function HomeView({ incidents, user }) {
         { label: '전체', count: incidents.length, icon: <Package size={18} />, color: 'text-slate-900' },
         { label: '접수대기', count: incidents.filter(i => i.status === 'pending').length, icon: <Clock size={18} />, color: 'text-amber-600' },
         { label: '로젠승인', count: incidents.filter(i => i.status === 'approved').length, icon: <CheckCircle2 size={18} />, color: 'text-blue-600' },
-        { label: '정산완료', count: incidents.filter(i => i.status === 'settled').length, icon: <AlertTriangle size={18} />, color: 'text-emerald-600' },
+        { label: '정산완료', count: incidents.filter(i => i.status === SETTLED).length, icon: <AlertTriangle size={18} />, color: 'text-emerald-600' },
     ];
 
     // 월별 접수 추이 (최근 6개월)
@@ -582,17 +574,22 @@ function Placeholder({ icon: Icon, title, desc }) {
 }
 
 // ============ 대시보드 ============
-function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }) {
+function Dashboard({ incidents, user, loading, error, onReload, onUpdated, onGoCreate }) {
     const [statusFilter, setStatusFilter] = useState('전체');
     const [brandFilter, setBrandFilter] = useState('전체');
     const [keyword, setKeyword] = useState('');
+    const [selectedIds, setSelectedIds] = useState([]); // 정산 완료 처리 대상 선택
+    const [busyId, setBusyId] = useState(null); // 철회 처리 중인 사고건 id
+    const [settling, setSettling] = useState(false); // 정산 완료 처리 중
+
+    const isSettled = (inc) => inc.status === SETTLED;
 
     // 통계: 전체 / 접수대기 / 로젠승인 / 정산완료
     const stats = [
         { label: '전체', count: incidents.length, icon: <Package size={18} />, color: 'text-slate-900' },
         { label: '접수대기', count: incidents.filter(i => i.status === 'pending').length, icon: <Clock size={18} />, color: 'text-amber-600' },
         { label: '로젠승인', count: incidents.filter(i => i.status === 'approved').length, icon: <CheckCircle2 size={18} />, color: 'text-blue-600' },
-        { label: '정산완료', count: incidents.filter(i => i.status === 'settled').length, icon: <AlertTriangle size={18} />, color: 'text-emerald-600' },
+        { label: '정산완료', count: incidents.filter(i => i.status === SETTLED).length, icon: <AlertTriangle size={18} />, color: 'text-emerald-600' },
     ];
 
     const filtered = incidents.filter(inc => {
@@ -605,6 +602,65 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
         }
         return true;
     });
+
+    // 체크박스 선택 (현재 필터된 목록 기준)
+    const selected = selectedIds.filter(id => filtered.some(i => i.id === id));
+    const allChecked = filtered.length > 0 && filtered.every(i => selectedIds.includes(i.id));
+    const toggleOne = (id) =>
+        setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    const toggleAll = () =>
+        setSelectedIds(allChecked ? [] : filtered.map(i => i.id));
+
+    // 철회: 이미 철회됨/정산완료 건은 불가(팝업), 그 외에는 PUT /withdraw
+    const withdraw = async (inc) => {
+        if (inc.status === 'withdrawn') {
+            alert('이미 철회된 건입니다.');
+            return;
+        }
+        if (isSettled(inc)) {
+            alert('정산 완료 건은 철회할 수 없습니다.');
+            return;
+        }
+        if (!confirm(`#${inc.id} 사고건을 철회할까요?`)) return;
+        setBusyId(inc.id);
+        try {
+            const res = await fetch(`${API}/incidents/${inc.id}/withdraw`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ withdrawnBy: user.loginId }),
+            });
+            if (!res.ok) throw new Error('서버 오류 (' + res.status + ')');
+            onUpdated(await res.json());
+        } catch (e) {
+            alert('철회 실패: ' + e.message);
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    // 선택한 사고건들을 정산 완료 처리 (단건/일괄)
+    const settleSelected = async () => {
+        if (selected.length === 0) return;
+        if (!confirm(`${selected.length}건을 정산 완료 처리할까요?`)) return;
+        setSettling(true);
+        try {
+            const results = await Promise.all(
+                selected.map(id =>
+                    fetch(`${API}/incidents/${id}/settle`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ settledBy: user.loginId }),
+                    }).then(r => (r.ok ? r.json() : Promise.reject(new Error('#' + id + ' 처리 실패 (HTTP ' + r.status + ')'))))
+                )
+            );
+            results.forEach(onUpdated);
+            setSelectedIds([]);
+        } catch (e) {
+            alert('정산 완료 처리 실패: ' + e.message);
+        } finally {
+            setSettling(false);
+        }
+    };
 
     // 현재 화면에 보이는(필터 적용된) 목록을 엑셀(.xlsx)로 다운로드
     // xlsx 라이브러리는 용량이 커서 버튼 클릭 시에만 동적으로 불러온다
@@ -703,11 +759,35 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                 </div>
             )}
 
+            {/* 선택 툴바 (정산 완료 처리) */}
+            <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-slate-500">
+                    {selected.length > 0 ? `${selected.length}건 선택됨` : ' '}
+                </span>
+                <button
+                    onClick={settleSelected}
+                    disabled={selected.length === 0 || settling}
+                    className="flex items-center gap-1.5 text-sm font-medium bg-emerald-600 text-white rounded-md px-3 py-2 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <CheckCircle2 size={14} />
+                    {settling ? '처리 중...' : '정산 완료 처리'}
+                </button>
+            </div>
+
             {/* 목록 테이블 */}
             <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
                 <table className="w-full text-sm whitespace-nowrap">
                     <thead>
                         <tr className="bg-slate-50 text-slate-500 text-xs">
+                            <th className="px-4 py-3 w-10">
+                                <input
+                                    type="checkbox"
+                                    checked={allChecked}
+                                    onChange={toggleAll}
+                                    className="align-middle accent-slate-900"
+                                    title="전체 선택"
+                                />
+                            </th>
                             <th className="text-left font-medium px-4 py-3 w-16">번호</th>
                             <th className="text-left font-medium px-4 py-3 w-28">접수일시</th>
                             <th className="text-left font-medium px-4 py-3">브랜드</th>
@@ -721,19 +801,27 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                             <th className="text-left font-medium px-4 py-3">송장번호</th>
                             <th className="text-left font-medium px-4 py-3">사고유형</th>
                             <th className="text-left font-medium px-4 py-3 w-24">상태</th>
-                            <th className="text-right font-medium px-4 py-3 w-16"></th>
+                            <th className="text-right font-medium px-4 py-3 w-20">철회</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={14} className="text-center text-slate-400 py-12 text-sm">
+                                <td colSpan={15} className="text-center text-slate-400 py-12 text-sm">
                                     {loading ? '불러오는 중...' : '표시할 사고건이 없습니다.'}
                                 </td>
                             </tr>
                         ) : (
                             filtered.map(inc => (
-                                <tr key={inc.id} className="border-t border-slate-100 hover:bg-slate-50">
+                                <tr key={inc.id} className={`border-t border-slate-100 hover:bg-slate-50 ${selectedIds.includes(inc.id) ? 'bg-slate-50' : ''}`}>
+                                    <td className="px-4 py-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.includes(inc.id)}
+                                            onChange={() => toggleOne(inc.id)}
+                                            className="align-middle accent-slate-900"
+                                        />
+                                    </td>
                                     <td className="px-4 py-3 text-slate-400">#{inc.id}</td>
                                     <td className="px-4 py-3 text-slate-600 text-xs">{fmtDate(inc.createdAt ?? inc.registeredAt)}</td>
                                     <td className="px-4 py-3 font-medium text-slate-800">{inc.brand}</td>
@@ -752,8 +840,14 @@ function Dashboard({ incidents, loading, error, onReload, onDelete, onGoCreate }
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <button onClick={() => onDelete(inc.id)} className="text-slate-400 hover:text-rose-600 p-1" title="삭제">
-                                            <Trash2 size={15} />
+                                        <button
+                                            onClick={() => withdraw(inc)}
+                                            disabled={busyId === inc.id}
+                                            className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 border border-rose-200 rounded-md px-2.5 py-1.5 hover:bg-rose-50 disabled:opacity-50"
+                                            title="철회"
+                                        >
+                                            <Ban size={13} />
+                                            철회
                                         </button>
                                     </td>
                                 </tr>
@@ -775,7 +869,6 @@ function CreateIncident({ user, onCreated, onCancel }) {
         incidentType: INCIDENT_TYPES[0],
         orderNo: '',
         trackingNo: '',
-        status: STATUSES[0].value,
         incidentDate: '',
         carrier: CARRIERS[0],
         season: '',
@@ -791,6 +884,7 @@ function CreateIncident({ user, onCreated, onCancel }) {
 
     const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
+    // 등록하면 무조건 접수대기(pending)로 접수
     const handleSubmit = async () => {
         setError('');
         if (!form.orderNo.trim()) {
@@ -806,7 +900,7 @@ function CreateIncident({ user, onCreated, onCancel }) {
             const response = await fetch(`${API}/incidents`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...form, createdBy: user.loginId }),
+                body: JSON.stringify({ ...form, status: 'pending', createdBy: user.loginId }),
             });
             if (!response.ok) throw new Error('서버 오류 (' + response.status + ')');
             const created = await response.json();
@@ -822,7 +916,7 @@ function CreateIncident({ user, onCreated, onCancel }) {
     const labelCls = 'block text-xs font-medium text-slate-700 mb-1.5';
 
     return (
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-[1600px] mx-auto">
             <div className="flex items-center justify-between mb-5">
                 <div>
                     <h2 className="text-xl font-semibold text-slate-900">사고건 등록</h2>
@@ -950,26 +1044,6 @@ function CreateIncident({ user, onCreated, onCancel }) {
                     />
                 </div>
 
-                <div>
-                    <label className={labelCls}>처리상태</label>
-                    <div className="flex flex-wrap gap-2">
-                        {STATUSES.map(s => (
-                            <button
-                                key={s.value}
-                                type="button"
-                                onClick={() => update('status', s.value)}
-                                className={`text-sm px-3 py-1.5 rounded-md border transition ${
-                                    form.status === s.value
-                                        ? (STATUS_STYLE[s.value] ?? 'bg-slate-900 text-white border-slate-900') + ' font-medium'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                }`}
-                            >
-                                {s.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
                 {error && (
                     <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2 rounded-md flex items-center gap-2">
                         <AlertCircle size={15} />
@@ -985,7 +1059,11 @@ function CreateIncident({ user, onCreated, onCancel }) {
                     >
                         {submitting ? '등록 중...' : '사고건 등록'}
                     </button>
-                    <button onClick={onCancel} className="px-5 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50">
+                    <button
+                        onClick={onCancel}
+                        disabled={submitting}
+                        className="px-5 py-2.5 text-sm text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                    >
                         취소
                     </button>
                 </div>
