@@ -639,24 +639,50 @@ function Dashboard({ incidents, user, loading, error, onReload, onUpdated, onGoC
     };
 
     // 선택한 사고건들을 정산 완료 처리 (단건/일괄)
+    // 철회건·이미 정산완료된 건은 제외, 섞여 있으면 빼고 나머지만 처리
     const settleSelected = async () => {
         if (selected.length === 0) return;
-        if (!confirm(`${selected.length}건을 정산 완료 처리할까요?`)) return;
+        const picked = filtered.filter(i => selected.includes(i.id));
+        const withdrawnCnt = picked.filter(i => i.status === 'withdrawn').length;
+        const settledCnt = picked.filter(i => i.status === 'settled').length;
+        const targets = picked.filter(i => i.status !== 'withdrawn' && i.status !== 'settled');
+
+        // 처리할 대상이 없으면 사유 안내
+        if (targets.length === 0) {
+            if (withdrawnCnt > 0 && settledCnt === 0) {
+                alert('철회된 건은 정산 완료 처리할 수 없습니다.');
+            } else {
+                alert('정산 완료 처리할 건이 없습니다.');
+            }
+            return;
+        }
+        // 제외 대상 안내 후 확인
+        const excluded = [];
+        if (withdrawnCnt > 0) excluded.push(`철회 ${withdrawnCnt}건`);
+        if (settledCnt > 0) excluded.push(`정산완료 ${settledCnt}건`);
+        const msg = excluded.length > 0
+            ? `${excluded.join(', ')}은 제외하고 ${targets.length}건을 정산 완료 처리할까요?`
+            : `${targets.length}건을 정산 완료 처리할까요?`;
+        if (!confirm(msg)) return;
+
         setSettling(true);
         try {
-            const results = await Promise.all(
-                selected.map(id =>
-                    fetch(`${API}/incidents/${id}/settle`, {
+            const results = await Promise.allSettled(
+                targets.map(inc =>
+                    fetch(`${API}/incidents/${inc.id}/settle`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ settledBy: user.loginId }),
-                    }).then(r => (r.ok ? r.json() : Promise.reject(new Error('#' + id + ' 처리 실패 (HTTP ' + r.status + ')'))))
+                    }).then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
                 )
             );
-            results.forEach(onUpdated);
+            const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+            ok.forEach(onUpdated);
             setSelectedIds([]);
-        } catch (e) {
-            alert('정산 완료 처리 실패: ' + e.message);
+            const failCnt = results.length - ok.length;
+            if (failCnt > 0) {
+                alert(`${ok.length}건 정산 완료, ${failCnt}건은 처리하지 못했습니다.`);
+            }
         } finally {
             setSettling(false);
         }
